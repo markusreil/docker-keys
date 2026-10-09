@@ -21,6 +21,7 @@ RUN echo "@testing https://dl-cdn.alpinelinux.org/alpine/edge/testing" >> /etc/a
       libusb \
       paperkey@testing \
       age \
+      argon2 \
       openssl \
       libqrencode-tools \
       zbar \

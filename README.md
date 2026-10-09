@@ -12,7 +12,7 @@ All-in-one key management image (Alpine-based): SSH, PGP/GnuPG, age, paper backu
 | Paper backup | `paperkey` (GPG secret-key to printable text, and back) |
 | QR code | `qrencode` (key/text/file to QR PNG/SVG/ANSI), `zbarimg` (QR photo back to data) |
 | YubiKey | `ykman` (yubikey-manager: OTP, FIDO2, PIV, OATH), `yubico-piv-tool`, `opensc` (`pkcs11-tool`, `piv-tool`), `ykpersonalize`, `pcscd`/`ccid` stack |
-| Helpers | `openssl`, `jq`, `git`, `bash`, `pinentry` |
+| Helpers | `openssl`, `argon2`, `jq`, `git`, `bash`, `pinentry` |
 
 ## Build and run
 
@@ -76,6 +76,12 @@ paperkey --pubring public.asc --secrets secret.txt | gpg --import   # restore
 # Print secret.txt, store offline; also works well piped into qrencode below.
 ```
 
+### Password hashing (argon2)
+```sh
+echo -n 'correct-horse' | argon2 somesalt -t 2 -m 16 -p 1 -l 24   # Argon2i PHC hash
+openssl rand -base64 16 | tee salt.txt                            # fresh salt per password
+```
+
 ### Key to QR code and back
 ```sh
 qrencode -o age-key.png -s 10 < age-key.txt
@@ -100,11 +106,16 @@ ykpersonalize -m82 -oauthtimeout -ochal-resp -ochal-hmac   # program YubiOTP slo
 ykman openpgp info
 ```
 
+Verified working with a YubiKey 5C NFC (firmware 5.7.1): `ykman openpgp info`
+returns the full applet status over in-container CCID.
+
 If `ykman openpgp info` says "Failed to connect" while `ykman list` sees the
 key, the CCID interface is busy or misattributed: make sure you passed both
 `--privileged` and `-v /run/udev:/run/udev`, and that no host-side pcscd or
-other process holds the device (`fuser /dev/bus/usb/*/*`). Devices that
-re-enumerate mid-session get stale udev paths; re-plug and retry.
+other process holds the device (`fuser /dev/bus/usb/*/*`). Stale state from
+repeated failed claims can wedge the enumeration ("Can't claim interface:
+LIBUSB_ERROR_BUSY"); fix by unplugging the key, confirming it is gone from
+the bus with no holders, then re-plugging and retrying in a fresh container.
 
 ## Notes
 
