@@ -23,8 +23,14 @@ docker run --rm -it -v "$PWD/work:/work" docker-keys
 # Persist GPG/SSH homes between runs:
 docker run --rm -it -v keys-gnupg:/root/.gnupg -v keys-ssh:/root/.ssh docker-keys
 
-# YubiKey USB passthrough (Linux):
-docker run --rm -it --device=/dev/bus/usb --device=/dev/hidraw9 -v /run/pcscd:/run/pcscd docker-keys
+# YubiKey USB passthrough (Linux). --privileged plus the host udev socket are
+# required: without /run/udev, pcscd misattributes the YubiKey's USB interfaces
+# and the CCID reader never initializes. pcscd is auto-started by the entrypoint.
+docker run --rm -it --privileged -v /run/udev:/run/udev docker-keys
+
+# Alternative: use the host's pcscd instead of the in-container one.
+# Start pcscd on the host (needs the CCID driver installed there), then:
+docker run --rm -it --device=/dev/bus/usb -v /run/pcscd:/run/pcscd docker-keys
 ```
 
 ## Use cases
@@ -80,13 +86,25 @@ diff age-key.txt restored-key.txt && echo RESTORED-OK
 
 ### YubiKey management
 ```sh
+# No "PC/SC not available" warning should appear; without hardware you get
+# "No YubiKey detected!" which is expected. ykman openpgp needs no extra
+# package: it ships with yubikey-manager, it needs CCID via pcscd.
 ykman info
 ykman list
 ykman otp info / ykman fido credentials list / ykman oath accounts list
 ykman piv info; yubico-piv-tool -a status
 pkcs11-tool --module /usr/lib/libykcs11.so -L -O
 ykpersonalize -m82 -oauthtimeout -ochal-resp -ochal-hmac   # program YubiOTP slots (resets slot!)
+
+# OpenPGP applet over CCID:
+ykman openpgp info
 ```
+
+If `ykman openpgp info` says "Failed to connect" while `ykman list` sees the
+key, the CCID interface is busy or misattributed: make sure you passed both
+`--privileged` and `-v /run/udev:/run/udev`, and that no host-side pcscd or
+other process holds the device (`fuser /dev/bus/usb/*/*`). Devices that
+re-enumerate mid-session get stale udev paths; re-plug and retry.
 
 ## Notes
 
